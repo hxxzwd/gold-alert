@@ -1,0 +1,29 @@
+name: 黄金价格提醒
+
+on:
+  schedule:
+    # 北京时间 9:30 和 14:30 = UTC 1:30 和 6:30
+    - cron: '30 1,6 * * *'
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  check-price:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      
+      - name: 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: 安装依赖
+        run: pip install requests
+      
+      - name: 运行提醒脚本
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+        run: python scripts/alert.py
