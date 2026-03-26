@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>黄金持仓助手</title>
+    <!-- Bootstrap 5 CSS (移动端优先) -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-bottom: 70px; /* 为底部导航栏留出空间 */
+            background-color: #f8f9fa;
+        }
+        /* 紧凑卡片样式 */
+        .card-stats {
+            border-radius: 0.75rem;
+            box-shadow: 0 0.125rem 0.25rem rgba(0,0,0,0.075);
+            padding: 0.5rem 0.75rem;
+        }
+        .card-stats .card-body {
+            padding: 0.25rem 0;
+        }
+        .card-stats .text-muted {
+            font-size: 0.7rem;
+        }
+        .card-stats .fs-4 {
+            font-size: 1.25rem !important;
+        }
+        .card-stats .fs-1 {
+            font-size: 1.8rem !important;
+        }
+        .nav-bottom {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: #fff;
+            border-top: 1px solid #dee2e6;
+            padding: 0.5rem 0;
+            z-index: 1000;
+        }
+        .nav-bottom .nav-link {
+            color: #6c757d;
+            text-align: center;
+            padding: 0.25rem 0;
+            font-size: 0.8rem;
+        }
+        .nav-bottom .nav-link.active {
+            color: #0d6efd;
+        }
+        .nav-bottom .nav-link i {
+            font-size: 1.5rem;
+            display: block;
+            margin-bottom: 0.25rem;
+        }
+        /* 简单图标占位 */
+        .icon-home::before { content: "🏠"; }
+        .icon-list::before { content: "📋"; }
+        .icon-settings::before { content: "⚙️"; }
+        .page {
+            display: none;
+        }
+        .page.active-page {
+            display: block;
+        }
+        /* 加仓表单为主体，适当增加上边距 */
+        .add-position-card {
+            margin-top: 1rem;
+        }
+        .compact-metrics .row {
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 页面容器 -->
+    <div class="container mt-2">
+        <!-- 页面1：首页（仪表盘+加仓） -->
+        <div id="page-home" class="page active-page">
+            <!-- 当前金价卡片（紧凑） -->
+            <div class="card card-stats mb-2">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="text-muted">当前金价 (上交所AU9999)</span>
+                        <div class="fs-1 fw-bold" id="current-price">--</div>
+                        <div class="small text-muted">元/克</div>
+                    </div>
+                    <div class="text-end">
+                        <span class="badge bg-light text-dark" id="price-source-time">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 关键指标卡片组（紧凑，两行两列） -->
+            <div class="row g-2 compact-metrics">
+                <div class="col-6">
+                    <div class="card card-stats h-100">
+                        <div class="card-body">
+                            <div class="text-muted small">平均持仓成本</div>
+                            <div class="fs-4 fw-bold" id="avg-cost">--</div>
+                            <div class="small">元/克</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="card card-stats h-100">
+                        <div class="card-body">
+                            <div class="text-muted small">固定阈值</div>
+                            <div class="fs-4 fw-bold" id="fixed-threshold">--</div>
+                            <div class="small">元/克</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="card card-stats h-100">
+                        <div class="card-body">
+                            <div class="text-muted small">总持仓克数</div>
+                            <div class="fs-4 fw-bold" id="total-grams">--</div>
+                            <div class="small">克</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="card card-stats h-100">
+                        <div class="card-body">
+                            <div class="text-muted small">总持仓金额</div>
+                            <div class="fs-4 fw-bold" id="total-amount">--</div>
+                            <div class="small">元</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 加仓表单（主体） -->
+            <div class="card add-position-card">
+                <div class="card-header bg-white fw-bold py-2">录入加仓</div>
+                <div class="card-body">
+                    <form id="add-position-form">
+                        <div class="mb-3">
+                            <label class="form-label">买入金额 (元) *</label>
+                            <input type="number" step="0.01" class="form-control" id="amount" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">成交金价 (元/克) *</label>
+                            <input type="number" step="0.01" class="form-control" id="price" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">买入克数</label>
+                            <input type="text" class="form-control" id="grams" readonly disabled>
+                            <div class="form-text">自动计算</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">买入日期</label>
+                            <input type="date" class="form-control" id="date">
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">提交加仓</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- 页面2：持仓台账 -->
+        <div id="page-ledger" class="page">
+            <h4 class="mb-3">持仓台账</h4>
+            <div class="alert alert-info">当前加权平均成本：<strong id="ledger-avg-cost">--</strong> 元/克</div>
+            <div id="holdings-list" class="list-group">
+                <!-- 动态列表将在这里渲染 -->
+                <div class="list-group-item text-muted">暂无持仓记录</div>
+            </div>
+        </div>
+
+        <!-- 页面3：配置 -->
+        <div id="page-config" class="page">
+            <h4 class="mb-3">配置</h4>
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h6 class="card-title">GitHub 配置</h6>
+                    <div class="mb-2">
+                        <label class="form-label">Personal Access Token</label>
+                        <input type="password" class="form-control" id="github-token" placeholder="ghp_xxxxxxxx">
+                        <div class="form-text">需要 gist 权限，<a href="#" target="_blank" id="token-help-link">如何获取？</a></div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Gist ID</label>
+                        <input type="text" class="form-control" id="gist-id" placeholder="例如 1234567890abcdef">
+                        <div class="form-text">你的私有 Gist 的 ID，<a href="#" target="_blank" id="gist-help-link">如何创建？</a></div>
+                    </div>
+                    <button class="btn btn-outline-primary w-100 mb-2" id="test-gist-btn">测试连接</button>
+                    <div id="gist-test-result" class="small"></div>
+                </div>
+            </div>
+            <div class="card mb-3">
+                <div class="card-body">
+                    <h6 class="card-title">提醒配置</h6>
+                    <div class="mb-2">
+                        <label class="form-label">企业微信机器人 Webhook</label>
+                        <input type="url" class="form-control" id="webhook-url" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">固定阈值 (元/克)</label>
+                        <input type="number" step="0.01" class="form-control" id="threshold-value" placeholder="例如 1000，低于此价格会给您推送提醒">
+                    </div>
+                    <button class="btn btn-primary w-100" id="save-config-btn">保存配置</button>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title">数据管理</h6>
+                    <button class="btn btn-outline-secondary w-100 mb-2" id="export-data-btn">导出数据 (JSON)</button>
+                    <button class="btn btn-outline-secondary w-100" id="import-data-btn">导入数据 (JSON)</button>
+                    <input type="file" id="import-file" style="display:none" accept=".json">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部导航栏 -->
+    <div class="nav-bottom">
+        <div class="row text-center">
+            <div class="col">
+                <a href="#" class="nav-link active" data-page="home">
+                    <span class="icon-home"></span>
+                    <span>首页</span>
+                </a>
+            </div>
+            <div class="col">
+                <a href="#" class="nav-link" data-page="ledger">
+                    <span class="icon-list"></span>
+                    <span>台账</span>
+                </a>
+            </div>
+            <div class="col">
+                <a href="#" class="nav-link" data-page="config">
+                    <span class="icon-settings"></span>
+                    <span>配置</span>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- 自定义 JS 将在后续步骤添加 -->
+    
+        <!-- Bootstrap JS -->
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+        <!-- 自定义 JS 模块 -->
+        <script src="js/gist.js"></script>
+        <script src="js/holdings.js"></script>
+        <script>
+            // 底部导航栏切换页面
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const page = link.getAttribute('data-page');
+                    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                    link.classList.add('active');
+                    document.querySelectorAll('.page').forEach(p => p.classList.remove('active-page'));
+                    document.getElementById(`page-${page}`).classList.add('active-page');
+                    
+                    // 切换到台账页时刷新数据
+                    if (page === 'ledger') {
+                        refreshLedgerPage();
+                    }
+                });
+            });
+            
+            // 全局变量：当前配置
+            let currentConfig = null;
+            
+            // 刷新首页指标
+            async function refreshHomePage() {
+                if (!window.holdingsManager || !window.gistManager.isConfigured()) {
+                    // 未配置时显示占位符
+                    document.getElementById('avg-cost').innerText = '--';
+                    document.getElementById('fixed-threshold').innerText = '--';
+                    document.getElementById('total-grams').innerText = '--';
+                    document.getElementById('total-amount').innerText = '--';
+                    document.getElementById('current-price').innerText = '--';
+                    document.getElementById('price-source-time').innerText = '--';
+                    return;
+                }
+                
+                try {
+                    const config = await window.holdingsManager.loadConfig();
+                    currentConfig = config;
+                    
+                    // 更新指标卡片
+                    document.getElementById('avg-cost').innerText = config.weighted_avg_cost.toFixed(2);
+                    document.getElementById('fixed-threshold').innerText = config.fixed_threshold.toFixed(2);
+                    document.getElementById('total-grams').innerText = window.holdingsManager.getTotalGrams().toFixed(2);
+                    document.getElementById('total-amount').innerText = window.holdingsManager.getTotalAmount().toFixed(2);
+                    
+                    // 更新金价显示（从 last_price 读取）
+                    if (config.last_price && config.last_price.price > 0) {
+                        document.getElementById('current-price').innerText = config.last_price.price.toFixed(2);
+                        let sourceTime = `${config.last_price.source || '未知'} · ${config.last_price.time || '未知'}`;
+                        document.getElementById('price-source-time').innerText = sourceTime;
+                    } else {
+                        document.getElementById('current-price').innerText = '--';
+                        document.getElementById('price-source-time').innerText = '暂无数据';
+                    }
+                } catch (error) {
+                    console.error('刷新首页失败:', error);
+                    // 显示错误但不崩溃
+                    document.getElementById('avg-cost').innerText = '错误';
+                }
+            }
+            
+            // 刷新台账页面
+            async function refreshLedgerPage() {
+                if (!window.holdingsManager || !window.gistManager.isConfigured()) {
+                    document.getElementById('holdings-list').innerHTML = '<div class="list-group-item text-muted">请先配置 GitHub</div>';
+                    document.getElementById('ledger-avg-cost').innerText = '--';
+                    return;
+                }
+                
+                try {
+                    const config = await window.holdingsManager.loadConfig();
+                    document.getElementById('ledger-avg-cost').innerText = config.weighted_avg_cost.toFixed(2);
+                    
+                    const holdings = config.holdings || [];
+                    if (holdings.length === 0) {
+                        document.getElementById('holdings-list').innerHTML = '<div class="list-group-item text-muted">暂无持仓记录</div>';
+                        return;
+                    }
+                    
+                    // 渲染列表（倒序，最新的在上面）
+                    let html = '';
+                    for (let i = holdings.length - 1; i >= 0; i--) {
+                        const h = holdings[i];
+                        html += `
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <div class="fw-bold">${h.date || '未知日期'}</div>
+                                        <div class="small">金额: ${h.amount.toFixed(2)} 元</div>
+                                        <div class="small">金价: ${h.price.toFixed(2)} 元/克</div>
+                                        <div class="small">克数: ${h.grams.toFixed(4)} 克</div>
+                                    </div>
+                                    <div>
+                                        <button class="btn btn-sm btn-outline-primary edit-holding" data-index="${i}">编辑</button>
+                                        <button class="btn btn-sm btn-outline-danger delete-holding" data-index="${i}">删除</button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    document.getElementById('holdings-list').innerHTML = html;
+                    
+                    // 绑定编辑和删除事件
+                    document.querySelectorAll('.edit-holding').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            const index = parseInt(btn.getAttribute('data-index'));
+                            await editHolding(index);
+                        });
+                    });
+                    document.querySelectorAll('.delete-holding').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            const index = parseInt(btn.getAttribute('data-index'));
+                            if (confirm('确定删除这条记录吗？')) {
+                                await window.holdingsManager.deleteHolding(index);
+                                await refreshLedgerPage();
+                                await refreshHomePage();
+                            }
+                        });
+                    });
+                } catch (error) {
+                    console.error('刷新台账失败:', error);
+                    document.getElementById('holdings-list').innerHTML = '<div class="list-group-item text-danger">加载失败，请检查配置</div>';
+                }
+            }
+            
+            // 编辑持仓记录
+            async function editHolding(index) {
+                const config = await window.holdingsManager.loadConfig();
+                const holding = config.holdings[index];
+                if (!holding) return;
+                
+                const newAmount = prompt('请输入新的买入金额（元）:', holding.amount);
+                if (newAmount === null) return;
+                const newPrice = prompt('请输入新的成交金价（元/克）:', holding.price);
+                if (newPrice === null) return;
+                const newDate = prompt('请输入新的买入日期 (YYYY-MM-DD):', holding.date);
+                if (newDate === null) return;
+                
+                try {
+                    await window.holdingsManager.updateHolding(index, parseFloat(newAmount), parseFloat(newPrice), newDate);
+                    await refreshLedgerPage();
+                    await refreshHomePage();
+                    alert('修改成功');
+                } catch (error) {
+                    alert('修改失败: ' + error.message);
+                }
+            }
+            
+            // 加仓表单自动计算克数
+            const amountInput = document.getElementById('amount');
+            const priceInput = document.getElementById('price');
+            const gramsInput = document.getElementById('grams');
+            
+            function updateGrams() {
+                const amount = parseFloat(amountInput.value);
+                const price = parseFloat(priceInput.value);
+                if (amount > 0 && price > 0) {
+                    const grams = amount / price;
+                    gramsInput.value = grams.toFixed(4);
+                } else {
+                    gramsInput.value = '';
+                }
+            }
+            
+            amountInput.addEventListener('input', updateGrams);
+            priceInput.addEventListener('input', updateGrams);
+            
+            // 提交加仓表单
+            const addForm = document.getElementById('add-position-form');
+            addForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                if (!window.gistManager.isConfigured()) {
+                    alert('请先在配置页设置 GitHub Token 和 Gist ID');
+                    return;
+                }
+                
+                const amount = parseFloat(document.getElementById('amount').value);
+                const price = parseFloat(document.getElementById('price').value);
+                const date = document.getElementById('date').value;
+                
+                if (!amount || amount <= 0) {
+                    alert('请输入有效的买入金额');
+                    return;
+                }
+                if (!price || price <= 0) {
+                    alert('请输入有效的成交金价');
+                    return;
+                }
+                
+                try {
+                    await window.holdingsManager.addHolding(amount, price, date);
+                    // 清空表单
+                    addForm.reset();
+                    gramsInput.value = '';
+                    // 设置默认日期为昨天
+                    document.getElementById('date').value = window.holdingsManager.getYesterdayDate();
+                    // 刷新界面
+                    await refreshHomePage();
+                    alert('加仓成功');
+                } catch (error) {
+                    alert('加仓失败: ' + error.message);
+                }
+            });
+            
+            // 设置默认日期为昨天
+            document.getElementById('date').value = window.holdingsManager.getYesterdayDate();
+            
+            // 配置页相关
+            const tokenInput = document.getElementById('github-token');
+            const gistIdInput = document.getElementById('gist-id');
+            const testBtn = document.getElementById('test-gist-btn');
+            const testResult = document.getElementById('gist-test-result');
+            const saveConfigBtn = document.getElementById('save-config-btn');
+            const webhookUrlInput = document.getElementById('webhook-url');
+            const thresholdInput = document.getElementById('threshold-value');
+            
+            // 加载已保存的配置到输入框
+            tokenInput.value = localStorage.getItem('github_token') || '';
+            gistIdInput.value = localStorage.getItem('gist_id') || '';
+            
+            // 测试连接按钮
+            testBtn.addEventListener('click', async () => {
+                const token = tokenInput.value.trim();
+                const gistId = gistIdInput.value.trim();
+                if (!token || !gistId) {
+                    testResult.innerHTML = '<span class="text-danger">请填写 Token 和 Gist ID</span>';
+                    return;
+                }
+                
+                // 临时设置凭证进行测试
+                window.gistManager.setCredentials(token, gistId);
+                const result = await window.gistManager.testConnection();
+                if (result.success) {
+                    testResult.innerHTML = '<span class="text-success">✓ ' + result.message + '</span>';
+                    // 测试成功后，尝试加载配置并填充表单
+                    try {
+                        const config = await window.holdingsManager.loadConfig();
+                        webhookUrlInput.value = config.webhook_url || '';
+                        thresholdInput.value = config.fixed_threshold || 1000;
+                    } catch (e) {
+                        console.error('加载配置失败', e);
+                    }
+                } else {
+                    testResult.innerHTML = '<span class="text-danger">✗ ' + result.message + '</span>';
+                }
+            });
+            
+            // 保存配置按钮
+            saveConfigBtn.addEventListener('click', async () => {
+                const token = tokenInput.value.trim();
+                const gistId = gistIdInput.value.trim();
+                const webhookUrl = webhookUrlInput.value.trim();
+                const threshold = parseFloat(thresholdInput.value);
+                
+                if (!token || !gistId) {
+                    alert('请填写 Token 和 Gist ID');
+                    return;
+                }
+                
+                if (isNaN(threshold) || threshold <= 0) {
+                    alert('固定阈值必须是大于0的数字');
+                    return;
+                }
+                
+                try {
+                    // 先设置凭证
+                    window.gistManager.setCredentials(token, gistId);
+                    
+                    // 尝试加载现有配置，如果不存在则创建默认配置
+                    let config;
+                    try {
+                        config = await window.gistManager.getConfig();
+                    } catch (e) {
+                        // 如果配置不存在，创建默认配置
+                        config = {
+                            holdings: [],
+                            weighted_avg_cost: 0,
+                            fixed_threshold: 1000,
+                            webhook_url: '',
+                            last_alert: { price: 0, datetime: '' },
+                            last_price: { price: 0, source: '', time: '' }
+                        };
+                    }
+                    
+                    // 更新配置
+                    config.webhook_url = webhookUrl;
+                    config.fixed_threshold = threshold;
+                    
+                    // 保存到 Gist
+                    await window.gistManager.updateConfig(config);
+                    
+                    alert('配置保存成功');
+                    
+                    // 刷新首页显示
+                    await refreshHomePage();
+                } catch (error) {
+                    alert('保存失败: ' + error.message);
+                }
+            });
+            
+            // 导出数据
+            document.getElementById('export-data-btn').addEventListener('click', async () => {
+                if (!window.gistManager.isConfigured()) {
+                    alert('请先配置 GitHub');
+                    return;
+                }
+                try {
+                    const config = await window.holdingsManager.loadConfig();
+                    const dataStr = JSON.stringify(config, null, 2);
+                    const blob = new Blob([dataStr], {type: 'application/json'});
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `gold_alert_backup_${new Date().toISOString().slice(0,10)}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                } catch (error) {
+                    alert('导出失败: ' + error.message);
+                }
+            });
+            
+            // 导入数据
+            const importFileInput = document.getElementById('import-file');
+            document.getElementById('import-data-btn').addEventListener('click', () => {
+                importFileInput.click();
+            });
+            importFileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    try {
+                        const jsonString = event.target.result;
+                        await window.holdingsManager.importData(jsonString);
+                        alert('导入成功');
+                        await refreshHomePage();
+                        await refreshLedgerPage();
+                    } catch (error) {
+                        alert('导入失败: ' + error.message);
+                    }
+                };
+                reader.readAsText(file);
+                importFileInput.value = ''; // 清空，允许重复导入同一文件
+            });
+            
+            // 初始化加载
+            refreshHomePage();
+            
+            // 帮助链接占位（后续可替换为真实教程）
+            document.getElementById('token-help-link').href = 'https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens';
+            document.getElementById('gist-help-link').href = 'https://docs.github.com/en/get-started/writing-on-github/editing-and-sharing-content-with-gists/creating-gists';
+        </script>
+</body>
+</html>
