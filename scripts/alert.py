@@ -39,19 +39,17 @@ def get_gold_price():
     """获取金价，带重试机制"""
     print("开始获取金价...", flush=True)
     
-    # 数据源列表，增加重试次数
+    # 【已修复】全部替换为 上金所 AU9999 现货 正确接口
     sources = [
-        {"name": "新浪财经", "url": "https://hq.sinajs.cn/list=hf_AU9999", "parser": parse_sina, "encoding": "gbk", "retry": 2},
-        {"name": "腾讯财经", "url": "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=au9999,day,,,1", "parser": parse_tencent, "encoding": "utf-8", "retry": 1},
-        {"name": "东方财富", "url": "https://push2.eastmoney.com/api/qt/stock/get?invt=2&fltt=1&secid=1.5188&fields=f43", "parser": parse_eastmoney, "encoding": "utf-8", "retry": 1},
-        {"name": "和讯网", "url": "http://gold.hexun.com/api/quote/?code=AU9999", "parser": parse_hexun, "encoding": "utf-8", "retry": 1}
+        {"name": "新浪财经", "url": "https://hq.sinajs.cn/list=SGE_AU9999", "parser": parse_sina, "encoding": "gbk", "retry": 2},
+        {"name": "东方财富", "url": "https://push2.eastmoney.com/api/qt/stock/get?invt=2&fltt=1&secid=88.AU9999&fields=f43", "parser": parse_eastmoney, "encoding": "utf-8", "retry": 2},
     ]
     
     for source in sources:
         for attempt in range(source.get("retry", 1)):
             try:
                 print(f"尝试 {source['name']} (第{attempt+1}次)...", flush=True)
-                resp = requests.get(source['url'], timeout=10)  # 增加超时到10秒
+                resp = requests.get(source['url'], timeout=10)
                 if source.get("encoding"):
                     resp.encoding = source["encoding"]
                 
@@ -64,13 +62,13 @@ def get_gold_price():
                         price = None
                 
                 if price and price > 0:
-                    # 验证价格合理性（AU9999 历史范围 500-1500 元/克）
-                    if 500 < price < 1500:
+                    # 验证价格合理性（AU9999 历史范围 400-1500 元/克）
+                    if 400 < price < 1500:
                         print(f"成功: {source['name']} 价格 {price}", flush=True)
                         return price, source['name']
                     else:
                         print(f"{source['name']} 返回价格 {price} 超出合理范围，跳过", flush=True)
-                        break  # 价格不合理，不再重试这个源
+                        break
             except Exception as e:
                 print(f"{source['name']} 失败: {e}", flush=True)
                 continue
@@ -78,6 +76,7 @@ def get_gold_price():
     print("所有数据源均失败", flush=True)
     return None, None
 
+# 【已修复】正确解析新浪 上金所 AU9999
 def parse_sina(text):
     try:
         start = text.find('"')
@@ -85,43 +84,29 @@ def parse_sina(text):
         if start == -1 or end == -1:
             return None
         data = text[start+1:end].split(',')
-        if len(data) > 0:
-            return float(data[0])
+        if len(data) >= 4:
+            return float(data[3])
     except:
         pass
     return None
 
+# 【废弃不用，保留函数不删】
 def parse_tencent(data):
-    try:
-        day_data = data.get('data', {}).get('au9999', {}).get('day', [])
-        if day_data and len(day_data) > 0:
-            return float(day_data[-1][2])
-    except:
-        pass
     return None
 
+# 【已修复】正确解析东方财富 上金所 AU9999
 def parse_eastmoney(data):
     """解析东方财富返回数据"""
     try:
         price = data.get('data', {}).get('f43', 0)
         if price:
-            # 如果价格大于 1500，可能是单位问题
-            if price > 1500:
-                price = price / 10
             return float(price)
     except:
         pass
     return None
 
+# 【废弃不用，保留函数不删】
 def parse_hexun(data):
-    """解析和讯网返回数据"""
-    try:
-        # 和讯网返回格式：{"data":{"AU9999":{"price":xxx}}}
-        price = data.get('data', {}).get('AU9999', {}).get('price', 0)
-        if price:
-            return float(price)
-    except:
-        pass
     return None
 
 def read_gist_config():
