@@ -14,6 +14,14 @@ print("=== 脚本开始执行 ===", flush=True)
 
 BEIJING_TZ = timezone(timedelta(hours=8))
 
+# 新增：通用请求头，解决反爬问题
+COMMON_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Referer': 'https://finance.sina.com.cn/',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
+}
+
 def is_trading_day():
     """判断是否为交易日"""
     try:
@@ -39,17 +47,45 @@ def get_gold_price():
     """获取金价，带重试机制"""
     print("开始获取金价...", flush=True)
     
-    # 【已修复】全部替换为 上金所 AU9999 现货 正确接口
+    # 【修复】新增反爬头 + 新增上金所官网备用接口
     sources = [
-        {"name": "新浪财经", "url": "https://hq.sinajs.cn/list=SGE_AU9999", "parser": parse_sina, "encoding": "gbk", "retry": 2},
-        {"name": "东方财富", "url": "https://push2.eastmoney.com/api/qt/stock/get?invt=2&fltt=1&secid=88.AU9999&fields=f43", "parser": parse_eastmoney, "encoding": "utf-8", "retry": 2},
+        {
+            "name": "新浪财经", 
+            "url": "https://hq.sinajs.cn/list=SGE_AU9999", 
+            "parser": parse_sina, 
+            "encoding": "gbk", 
+            "retry": 3,
+            "headers": COMMON_HEADERS  # 加反爬头
+        },
+        {
+            "name": "东方财富", 
+            "url": "https://push2.eastmoney.com/api/qt/stock/get?invt=2&fltt=1&secid=88.AU9999&fields=f43", 
+            "parser": parse_eastmoney, 
+            "encoding": "utf-8", 
+            "retry": 2,
+            "headers": COMMON_HEADERS  # 加反爬头
+        },
+        {
+            "name": "上金所备用",
+            "url": "https://www.sge.com.cn/sge/xqzx/mrhq/getHistoryData?contractCode=AU9999&cycleType=day&beginDate=&endDate=",
+            "parser": parse_sge,
+            "encoding": "utf-8",
+            "retry": 2,
+            "headers": {**COMMON_HEADERS, "Referer": "https://www.sge.com.cn/"}
+        }
     ]
     
     for source in sources:
         for attempt in range(source.get("retry", 1)):
             try:
                 print(f"尝试 {source['name']} (第{attempt+1}次)...", flush=True)
-                resp = requests.get(source['url'], timeout=10)
+                # 【修复】带请求头访问
+                resp = requests.get(
+                    source['url'], 
+                    headers=source.get("headers", {}),
+                    timeout=15,  # 超时延长到15秒
+                    verify=False  # 跳过SSL验证（解决部分环境证书问题）
+                )
                 if source.get("encoding"):
                     resp.encoding = source["encoding"]
                 
@@ -73,10 +109,10 @@ def get_gold_price():
                 print(f"{source['name']} 失败: {e}", flush=True)
                 continue
     
-    print("所有数据源均失败", flush=True)
+    print("所有数据源均获取失败", flush=True)
     return None, None
 
-# 【已修复】正确解析新浪 上金所 AU9999
+# 【修复】正确解析新浪 上金所 AU9999
 def parse_sina(text):
     try:
         start = text.find('"')
@@ -86,23 +122,37 @@ def parse_sina(text):
         data = text[start+1:end].split(',')
         if len(data) >= 4:
             return float(data[3])
-    except:
-        pass
+    except Exception as e:
+        print(f"新浪解析失败: {e}", flush=True)
     return None
 
 # 【废弃不用，保留函数不删】
 def parse_tencent(data):
     return None
 
-# 【已修复】正确解析东方财富 上金所 AU9999
+# 【修复】正确解析东方财富 上金所 AU9999
 def parse_eastmoney(data):
     """解析东方财富返回数据"""
     try:
         price = data.get('data', {}).get('f43', 0)
-        if price:
+        if price and price > 0:
             return float(price)
-    except:
-        pass
+    except Exception as e:
+        print(f"东方财富解析失败: {e}", flush=True)
+    return None
+
+# 【新增】解析上金所官网数据
+def parse_sge(data):
+    """解析上金所官网返回数据"""
+    try:
+        rows = data.get('data', {}).get('rows', [])
+        if rows and len(rows) > 0:
+            # 取最新一条的收盘价
+            latest_price = rows[-1].get('closePrice', 0)
+            if latest_price and latest_price > 0:
+                return float(latest_price)
+    except Exception as e:
+        print(f"上金所解析失败: {e}", flush=True)
     return None
 
 # 【废弃不用，保留函数不删】
